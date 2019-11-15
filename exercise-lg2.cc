@@ -1,6 +1,16 @@
 #include <git2.h>
 
 #include <iostream>
+#include <set>
+#include <vector>
+
+using fileindex_t = std::set<std::string>;
+
+void print_fileindex(const fileindex_t& f) {
+  for(const std::string& e : f) {
+    std::clog << "-- " << e << std::endl;
+  }
+}
 
 void git_handle_error(int err) {
   if (err < 0) {
@@ -22,16 +32,62 @@ int my_treewalk_cb(const char *root, const git_tree_entry *entry, void *payload)
       break;
     }
     case GIT_OBJ_TREE: {
-      std::clog << "a tree: " << root << git_tree_entry_name(entry) << std::endl;
+      //std::clog << "a tree: " << root << git_tree_entry_name(entry) << std::endl;
       break;
     }
     case GIT_OBJ_BLOB: {
-      std::clog << "a blob: " << root << git_tree_entry_name(entry) << std::endl;
+      // Handle blob
+      // ... but can't get object (blob) from tree_entry without a tree/repo!
+      //     As all we're doing for now is checking we can get content, store
+      //     bloba paths in the payload
+      auto f = (fileindex_t*)payload;
+      std::string pth{root};
+      pth += git_tree_entry_name(entry);
+      //std::clog << "a blob: " << pth << std::endl;
+      f->insert(pth);
       break;
     }
-    default: { std::cerr << "Tree entry is ???\n"; }
+    default: {
+      std::cerr << "Tree entry is ???\n";
+      break;
+    }
   }
   return 0;
+}
+
+// Get tree associated with supplied object, if any
+// Returned tree must be freed
+int tree_from_object(git_tree** out_tree, const git_object* source) {
+  switch (git_object_type(source)) {
+    case GIT_OBJ_COMMIT: {
+      return git_commit_tree(out_tree, (const git_commit *)source);
+      break;
+    }
+    case GIT_OBJ_TREE: {
+      return git_tree_dup(out_tree, (git_tree *)source);
+      break;
+    }
+    case GIT_OBJ_TAG: {
+      git_object *tag_target{nullptr};
+      // Two level process, so decide what to do on non-zero error
+      int error = git_tag_peel(&tag_target, (const git_tag *)source);
+
+      if(error != 0) {
+        return error;
+      }
+      
+      // Peeling should lead to a commit, but need to check that's always the case
+      error = git_commit_tree(out_tree, (const git_commit *)tag_target);
+      git_object_free(tag_target);
+      return error;
+      break;
+    }
+    default:
+      // Not clear this is the right thing to do...
+      giterr_set_str(GITERR_INVALID, "cannot derive tree object");
+      return GITERR_INVALID;
+      break;
+  }
 }
 
 int main(int argc, char **argv) {
@@ -64,74 +120,62 @@ int main(int argc, char **argv) {
 
   // We want something that can resolve to a tree...
   // So must be a commit, tag or tree?
-  switch (git_object_type(revobj)) {
-    case GIT_OBJ_COMMIT: {
-      // show_commit((const git_commit *)obj);
-      // get the tree, parse that...
-      std::clog << "handling commit object\n";
-      git_tree *tr{nullptr};
-      error = git_commit_tree(&tr, (git_commit *)revobj);
-      git_handle_error(error);
+  git_tree* tr{nullptr};
+  error = tree_from_object(&tr, revobj);
+  git_handle_error(error);
+  
+  // Traverse by walking because by entry does not recurse into child trees
+  // Index the revspec to store a list of blob names
+  fileindex_t pl;
+  error = git_tree_walk(tr, GIT_TREEWALK_PRE, my_treewalk_cb, &pl);
+  git_handle_error(error);
 
-      // Traverse tree by entry?
-      // ... but doesn't recurse!
-      // int entries = git_tree_entrycount(tr);
-      // std::clog << "tree holds " << entries << " entries\n";
-      // for (int i=0; i < entries; ++i) {
-      //  const git_tree_entry* entry = git_tree_entry_byindex(tr, i);
-      //  std::cout << i << ": " << git_tree_entry_name(entry) << "\n";
-      //}
+  // Iterate through names to get blobs
+  // Sort of revisits tree_walk, so in interface can consider on-demand lookup
+  // of paths, cacheing content (since it should be fixed over the "resource db" lifetime)
+  size_t totalSize{0};
+  for (const std::string& p : pl) {
+    // Since we're dealing with a tree, have to use path for nested trees!
+    git_tree_entry* ent{nullptr};
+    error = git_tree_entry_bypath(&ent, tr, p.c_str());
+    git_handle_error(error);
 
-      // Traverse by walking?
-      error = git_tree_walk(tr, GIT_TREEWALK_PRE, my_treewalk_cb, nullptr);
-      git_handle_error(error);
+    // Now the object the entry points to
+    git_object* fblob{nullptr};
+    error = git_tree_entry_to_object(&fblob, repo, ent);
 
-      // Could also just use git_tree_entry_byname and wrap/lookup calls to that
-      // e.g. take path, if not found, cache it, else return prior.
+    totalSize += git_blob_rawsize((git_blob*)fblob); 
 
-      git_tree_free(tr);
-      break;
-    }
-    case GIT_OBJ_TREE: {
-      // show_tree((const git_tree *)obj);
-      // it's a tree already?
-      std::clog << "handling tree object\n";
-      error = git_tree_walk((const git_tree *)revobj, GIT_TREEWALK_PRE, my_treewalk_cb, nullptr);
-      git_handle_error(error);
-      break;
-    }
-    case GIT_OBJ_TAG: {
-      // show_tag((const git_tag *)obj);
-      // peel the tag, get the tree, parse that...
-      std::cout << "handling tag object\n";
-      git_object *tag_target{nullptr};
-      error = git_tag_peel(&tag_target, (const git_tag *)revobj);
-      git_handle_error(error);
+    std::clog << "- [perms] " << git_blob_rawsize((git_blob*)fblob) << " " << p;
 
-      // Should now have something that is tree like?
-      std::clog << "peeled object type is: " << git_object_type2string(git_object_type(tag_target))
-                << std::endl;
+    // The returned void* is owned by the blob, so needs copying if going to be used elsewhere
+    // For now can handle directly as blob is still in scope until end of loop.
+    // Makes assumption that sizeof(char) is 1 byte
+    std::vector<char> byteArray{};
+    byteArray.reserve(git_blob_rawsize((git_blob*)fblob));
+    char* begin = (char*)git_blob_rawcontent((git_blob*)fblob);
+    char* end = begin + git_blob_rawsize((git_blob*)fblob);
+    byteArray.assign(begin, end);
 
-      // Expect a commit here, but need to check that's always the case
-      git_tree *tr{nullptr};
-      error = git_commit_tree(&tr, (const git_commit *)tag_target);
-      git_handle_error(error);
+    std::clog << " buffersize: " << byteArray.size() << std::endl;
 
-      error = git_tree_walk(tr, GIT_TREEWALK_PRE, my_treewalk_cb, nullptr);
-      git_handle_error(error);
+    // ONLY for convenient printing, seems to produce right output, but likely
+    // want a better interface for treating content as a stream.
+    std::string x{byteArray.begin(), byteArray.end()};
+    std::clog << ">>> content (" << x.size() << " chars)\n" << x <<"\n<<< content" << std::endl;
 
-      git_tree_free(tr);
-      git_object_free(tag_target);
-      break;
-    }
-    default:
-      std::cerr << "unsupported object type\n";
-      break;
+    // Clean up
+    git_object_free(fblob);
+    git_tree_entry_free(ent);
   }
+  
+  // Track total raw size to see if caching in memory is reasaonable
+  std::clog << "total tree raw size: " << totalSize / 1000. << "K" << std::endl;
 
+
+  // Clean up objects that are our responsibility 
+  git_tree_free(tr);
   git_object_free(revobj);
-
-  // Must free non-const pointer
   git_repository_free(repo);
 
   git_libgit2_shutdown();
