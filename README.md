@@ -1,20 +1,38 @@
 SNemoDB Client
 ==============
 
-Demo of Git-based resource file DB using pygit2.
+Demo of Git-based resource file tagging and management using libgit2/GitCondDB.
 
+Quickstart
+======
+
+- Assuming you have an install of the SuperNEMO software stack, do
+
+  ```
+  $ brew snemo-shell
+  ...
+  snemo-shell> brew install libgit2
+  ...
+  snemo-shell> git clone https://github.com/drbenmorgan/GitResourceDB.git
+  snemo-shell> mkdir build && cd build
+  snemo-shell> cmake ../GitResourceDB && make
+  snemo-shell> ./exercise-lg2 ../GitResourceDB <revspec>
+  ```
+
+  You can pass `exercise-lg2` the path to any git repo plus a "revspec"
+  to query. This can be a tag (e.g. "v0.3.0") or a branch (e.g. "master").
+  The program will dump the contents of the repo at this revspec to stdout.
+
+Directory-Based Tagging in SuperNEMO
+======
 Current resource files use a tagging system based on directories. These
 tags may represent either changes in Time (e.g. parameter change) or API
 (e.g. new/removed parameters). Relationship of latter to source code
 yet to be fully determined.
 
-└──
-├──
 
-Directory-Based Tagging in SuperNEMO
-======
 A typical filesystem layout of resource files that configure SuperNEMO
-software could be as follows:
+software is usually organised as follows:
 
 ```
 resources/
@@ -236,38 +254,60 @@ resources/
    config.conf
 ```
 
-which yields the Directory-Based Tag structure.
+which yields the Directory-Based Tag structure. It's really an artifact of trying to
+manage a two-fold tagging system in a single git repo.
 
 
-Using Git as a Database
+Replacing Directory-based tags with Git Tags
 =====
 
-This may lead into the LHCb Git Conditions DB, which identifies three axes:
-development, time (strictly Interval of Validity) , and version (likely "API" version)
+As noted above, DBTs appear to arise as an artifact of a misunderstanding of Git tagging
+and repository structures. Instead, it's possible to reduce the problem to *just Git tags*
+provided we can:
 
-Have seen that DBT's reproduce a large amount of Git functionality. Can we have both
-full Git management of tags, but have DBTs for production/processing? Yes.
+1. Isolate the sets of resource files into separate git repositories, tagging those.
+2. Provide an API that can return at file at a given tag
 
-- Need to have one Git repo for each category requiring tags (call these "GitDBs")
-- If we need to put several GitDBs together in another (e.g. "SNemo 1.0 comprises SNGeom 4.5, SNSim 6.4, ...")
-  then use an "orchestration repo" using git submodules or manifest+manual checkouts (like google repo)
-- Maintain DBTs as archives or worktrees of the plain git repo (but worktrees don't play nice with submodules, though maybe well enough
-as an archiving step https://stackoverflow.com/questions/31871888/what-goes-wrong-when-using-git-worktree-with-git-submodules, https://ghc.haskell.org/trac/ghc/wiki/WorkingConventions/Git)
+The first requirement is simple, just move the required resource directory into its
+own Git repository. The diectory tags can be removed, and replaced by git tags. Thus:
+
 ```
-GitDB/
-  .git/ <- bare repo
-  1.0/ <- worktree/archive of bare repo, at tag 1.0
-    foo
-  2.0/ <- ...
+resources/
+├── foo
+    ├── 1.0
+    |   ├── FooSetup.conf
+    |   └── models
+    |       └── FooModel.conf
+    └── 2.0
+        └── FooSetup.conf
 ```
 
-worktree has advantage of being an "actual" git repo, so can get tag/sha/state when read.
-Need to be careful of keeping worktrees read-only once checked out (could use Homebrew's
-sandboxing example here?).
+becomes:
 
+```
+resources/
+├── foo
+    ├── FooSetup.conf
+        └── models
+            └── FooModel.conf
+```
 
-├──
-└──
-└──
+with git tags `v1.0` and `v2.0`. To see the difference, we can use the git command line
+to get the contents of a given file at a given tag, e.g.
 
+```
+$ git show v1.0:resources/foo/FooSetup.conf
+# I'm version 1.0!
+$ git show v2.0:resources/foo/FooSetup.conf
+# I'm version 2.0!
+```
 
+Thus git provides a way to manage tags and retrieve file contents at that tag. To use in
+software, we need a C/C++ API instead of the Git command line, so the [libgit2](https://libgit2.org) and [GitCondDB](https://gitlab.cern.ch/lhcb/GitCondDB)
+projects can help.
+
+The `exercise-lg2.cc` program shows the low level use of libgit2 to demonstrate that the content
+of a repository at a given tag can be extracted to an array of bytes and subsequently to a `std::string`.
+
+The `exercise-gcdb.cc` program shows the use of the LHCb GitCondDB library to perform a similar
+task but in a easier fashion.
