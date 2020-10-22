@@ -27,7 +27,7 @@ foreach(_dbapp resourceDB condDB)
   target_link_libraries(${_dbapp} PRIVATE GitCondDB::GitCondDB)
 endforeach()
 
-# Fetch example RDB
+# Fetch example DBs
 FetchContent_Declare(snemoresourcedb
   GIT_REPOSITORY https://github.com/SuperNEMO-DBD/SNemoResourceDB-proto.git
   GIT_TAG        main
@@ -37,5 +37,15 @@ if(NOT snemoresourcedb_POPULATED)
   FetchContent_Populate(snemoresourcedb)
 endif()
 
+FetchContent_Declare(snemoconditionsdb
+  GIT_REPOSITORY https://github.com/SuperNEMO-DBD/SNemoConditionsDB-proto.git
+  GIT_TAG        main
+  SOURCE_DIR     SNemoConditionsDB.git)
+FetchContent_GetProperties(snemoconditionsdb)
+if(NOT snemoconditionsdb_POPULATED)
+  FetchContent_Populate(snemoconditionsdb)
+endif()
+
 # - Run examples as tests to confirm expected behaviour
 add_test(NAME test_resourceDB COMMAND resourceDB "${snemoresourcedb_SOURCE_DIR}")
+add_test(NAME test_condDB COMMAND condDB "${snemoconditionsdb_SOURCE_DIR}")

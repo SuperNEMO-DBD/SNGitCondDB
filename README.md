@@ -128,7 +128,29 @@ the caller to interpret these in a suitable way (e.g. JSON binding, convert to b
 text file content so fine to just dump to screen.
 
 ## conditionsDB
-TBD with example DB really just an extension of `resourceDB` but with the time dimension added
+Implemented in [condDB.cc](condDB.cc), this demonstrates the use of GitCondDB to read
+an example detector "condition", in this case gas pressure.
 
-You can however run `condDB` to print the time spans offered by IOV. These use a large integer
-to count "ticks", so whilst it makes sense to interpret in seconds, it does not seem required.
+A simple git repo with files for this condition has been created at: https://github.com/SuperNEMO-DBD/SNemoConditionsDB-proto. The time axis makes things a little more complex in that repo, but the
+code in [condDB.cc](condDB.cc) is still very simple, the only addition being a time parameter to
+the DB query. The build of `condDB` clones this repo locally, so it is also accessible under `SNemoConditionsDB.git` in the build directory. To run `condDB` with this repo, change into the build directory and run as:
+
+```
+$ ./condDB ./SNemoConditionsDB.git
+```
+
+This just prints some information about possible time spans offered by IOVs. These use a large
+unsigned integer type to measure time without units, so the zero point and unit may be chosen
+according to need.
+
+The remainder of the info shows use of both the _IOV_ and _tag_ axes to get the gas pressure "value".
+In GitCondDB, all values are files, and here the content is just dumped to screen. It can be seen
+how additional frontend interfaces could be added to present actual numbers to the user.
+
+This only demonstrates a very simple use case, and we would need to think how to structure
+conditions into different repositories (Configuration, Slow, Calibration), and how to group
+data into IOVs. For example, we might have IOV bounds on run start/stop and have one file
+with all gas pressures recorded over a run.
+
+Best practices and patterns of use are something we can ask the LHCb experts about, along with tools
+to integrate and automate publication of commits/tags etc.
