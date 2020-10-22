@@ -5,7 +5,8 @@
 
 // So resources == conditions, but can wrap GitCondDB if we want more
 // convenience (e.g. lock to tag, don't allow return of directories)
-// Basically just an interface reduction
+// Basically just an interface reduction. We don't expect IOVs for
+// fixed configuration
 
 std::string throwing_dir_converter(const GitCondDB::CondDB::dir_content&) {
   throw std::runtime_error("directory return not allowed");
@@ -13,6 +14,7 @@ std::string throwing_dir_converter(const GitCondDB::CondDB::dir_content&) {
 
 struct ResourceDB {
   using Key = std::string;
+  using IOV = GitCondDB::CondDB::IOV;
 
   ResourceDB(std::string_view repository, std::string tag,
              std::shared_ptr<GitCondDB::Logger> logger = nullptr)
@@ -73,11 +75,10 @@ int main(int argc, char* argv[]) {
   std::cout << "Using GitCondDB:\n";
   resourceByGitCondDB(repoPath, revspec, resource);
   std::cout<<std::endl;
- 
+
   std::cout << "Using GitCondDB:\n";
   resourceByResourceDB(repoPath, revspec, resource);
   std::cout<<std::endl;
-  
 
   return 0;
 }
