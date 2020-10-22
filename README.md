@@ -139,6 +139,45 @@ the DB query. The build of `condDB` clones this repo locally, so it is also acce
 $ ./condDB ./SNemoConditionsDB.git
 ```
 
+You should see output similar to
+
+```
+GitCondDB uses the Interval Of Validity (IOV) concept for conditions that change over time
+time_point_t is just a ticker with a range of [0, 18446744073709551615)
+Interpreted as seconds, gives a range of      584942417355 years
+Interpreted as microseconds, gives a range of 584942 years
+Interpreted as nanoseconds, gives a range of  584.942 years
+Interpreted as picoseconds, gives a range of  0.584942 years
+At revspec main:
+At time 50
+  condition tracker/gas/pressure has
+  IOV   = [0,100)
+  value = {"p":0.1234,"u":"pascal"}
+
+At time 200
+  condition tracker/gas/pressure has
+  IOV   = [100,18446744073709551615)
+  value = {"p":0.2345,"u":"pascal"}
+
+Between times [50, 200), there are 2 IOV boundaries at times:
+  boundary = 0, time = 50
+  boundary = 1, time = 100
+At revspec vOld:
+At time 50
+  condition tracker/gas/pressure has
+  IOV   = [0,100)
+  value = {"value":0.1234}
+
+At time 200
+  condition tracker/gas/pressure has
+  IOV   = [100,18446744073709551615)
+  value = {"value":0.2345}
+
+Between times [50, 200), there are 2 IOV boundaries at times:
+  boundary = 0, time = 50
+  boundary = 1, time = 100
+```
+
 This just prints some information about possible time spans offered by IOVs. These use a large
 unsigned integer type to measure time without units, so the zero point and unit may be chosen
 according to need.
