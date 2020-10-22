@@ -3,11 +3,10 @@
 #include <iomanip>
 #include <iostream>
 
-// So resources == conditions, but can wrap GitCondDB if we want more
-// convenience (e.g. lock to tag, don't allow return of directories)
-// Basically just an interface reduction. We don't expect IOVs for
-// fixed configuration
-
+// Wrap GitCondDB instance as we want more convenience (e.g. lock to tag, don't allow
+// return of directories)
+// Basically just an interface reduction. We don't expect to use time_points for
+// pure configuration
 std::string throwing_dir_converter(const GitCondDB::CondDB::dir_content&) {
   throw std::runtime_error("directory return not allowed");
 }
@@ -35,50 +34,45 @@ struct ResourceDB {
   GitCondDB::CondDB conn_;
 };
 
-void resourceByGitCondDB(const std::string& repo, const std::string& tag, const std::string& path) {
-  // Create the connection
-  auto conn = GitCondDB::connect(repo);
-  conn.logger()->level = GitCondDB::Logger::Level::Debug;
-
-  // With GitCondDB, always have to supply the tag. time point is optional
-  auto res = conn.get({tag, path});
-
-  // Returned content can be a directory (tree), but can make returning this an
-  // error via the dir_converter type (throw an exception on a path that resolves to a dir/tree)
-  auto resource = std::get<0>(res);
-  std::cout << "resource <<<<<:\n" << resource << ">>>>> resource\n";
-
-  // Must disconnect or get seg fault (Maybe need scoped_connection?)
-  conn.disconnect();
-}
-
-void resourceByResourceDB(const std::string& repo, const std::string& tag,
-                          const std::string& path) {
-  ResourceDB conn{repo, tag};
-  auto resource = conn.get(path);
-  std::cout << "resource <<<<<:\n" << resource << ">>>>> resource\n";
-}
-
 int main(int argc, char* argv[]) {
-  if (argc != 4) {
-    std::cerr << "wrong args\n";
+  if (argc != 2) {
+    std::cerr << "usage: resourceDB <pathtorepo>\n";
     return 1;
   }
 
   // Assume as input:
   // - repo path
   // - a branch/tag name to "get" (eventually want the tree at this, so must be a tree!)
-  std::string repoPath{argv[1]};
-  std::string revspec{argv[2]};
-  std::string resource{argv[3]};
+  std::string repo{argv[1]};
 
-  std::cout << "Using GitCondDB:\n";
-  resourceByGitCondDB(repoPath, revspec, resource);
-  std::cout<<std::endl;
+  // Make some queries
+  // Given a tag...
+  {
+    std::string revspec{"v1.0.0"};
+    std::clog << "connecting to " << repo << "@" << revspec << std::endl;
 
-  std::cout << "Using GitCondDB:\n";
-  resourceByResourceDB(repoPath, revspec, resource);
-  std::cout<<std::endl;
+    // ... Connect the DB ...
+    ResourceDB conn{repo, revspec};
+
+    // ... Extract data into a string "blob" ...
+    // NB: throws an exception if the resource cannot be found
+    std::string data = conn.get("genbb/generators.conf");
+    std::clog << "data@" << revspec << " <<<<<\n" << data << "\n>>>>> data\n";
+  }
+
+  // Given a branch...
+  {
+    // Annoyingly GitHub changed the default branch new repos get...
+    std::string revspec{"main"};
+    std::clog << "connecting to " << repo << "@" << revspec << std::endl;
+
+    // ... Connect the DB ...
+    ResourceDB conn{repo, revspec};
+
+    // ... Extract a file ...
+    std::string data = conn.get("genbb/generators.conf");
+    std::clog << "data@" << revspec << " <<<<<\n" << data << "\n>>>>> data\n";
+  }
 
   return 0;
 }
