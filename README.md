@@ -21,7 +21,7 @@ These can be set up as follows for macOS/Linux systems:
   - Ensure CVMFS is installed and that you can do `ls /cvmfs/sft.cern.ch`
   - Run `source ./scripts/setup-centos7-cvmfs.sh` from the source directory before building
 - Ubuntu 20.04
-  - Run `apt install cmake fmt-dev libgit2-dev`
+  - Run `apt install cmake fmt-dev g++ libgit2-dev`
 
 To build, CMake can be used in the standard way:
 
