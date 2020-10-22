@@ -1,4 +1,4 @@
-# SNemoGitCondDB Prototype
+# SNGitCondDB Prototype
 
 Demo of libgit2/GitCondDB based management of resource and conditions data for
 SuperNEMO
