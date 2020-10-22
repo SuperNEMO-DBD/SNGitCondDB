@@ -1,10 +1,13 @@
 Directory-Based Tagging in SuperNEMO
 ======
+NB: Since this was written, Falaise has moved to a flattened directory
+structure in preparation for storing resources in either a Git or SQL DB.
+This presents the arguments for reducing director-based tags to pure Git tags.
+
 Current resource files use a tagging system based on directories. These
 tags may represent either changes in Time (e.g. parameter change) or API
 (e.g. new/removed parameters). Relationship of latter to source code
 yet to be fully determined.
-
 
 A typical filesystem layout of resource files that configure SuperNEMO
 software is usually organised as follows:
@@ -167,52 +170,101 @@ At this point, our Directory-Based Tag `1.0` has exactly the same content as the
 This illustrates an immediate issue with Directory-Based Tags in that they *reproduce an
 existing and well-known functionality of Git*.
 
-Git tag provides a guarantee of content, Directory Tags don't.
+Git's hashes provide a guarantee of content, Directory Tags don't as it's possible to
+edit the files without changing the directory tag:
 
 ```
+$ edit foo/1.0/FooSetup.conf
 ... change param, no directory change ...
-... git add git commit ...
-... might do this more ...
-... git tag -a vB "foo git tag, vB"
+$ git add
+$ git commit
+$ git tag -a vB "foo git tag, vB"
 ... Now have two git tags which are different, but DBT is the same, despite content having changed ....
 ```
 
 Normally, this shouldn't happen if the developer is careful, but in more complex hierarchies
-with multiple DBTs mistakes can creep in. This brings us to another issue with DBTs: how
+with multiple DBTs mistakes can creep in and be difficult to spot. This brings us to another issue with DBTs: how
 to make new DBTs.
 
 Making a New DBT
 -----
-- Create the directory, so have to know this upfront, so semantics of naming important
-- Related: No marker of "in progress" work like HEAD of a branch
+First, the new directory has to be created, and semantics of naming are important to establish the
+meaning (we don't have a git commit to record this info). A related issue is that this has no marker
+of "in progress" like the `HEAD` of a git branch
 
-Here, consider one simple case of just modding a parameter
+Here, we consider one simple case of just modding a parameter. We begin by *copying the files* from the old
+DBT to the new:
 
-- Now we have to *copy the files* from the old DBT to the new
-- In our example (and typical of SuperNEMO), just copy FooSetup.conf, mod param, point *back* to `1.0` model file
+```
+resources/
+├── foo
+    ├── 1.0
+    |   ├── FooSetup.conf
+    |   └── models
+    |       └── FooModel.conf
+    └── 2.0
+        └── FooSetup.conf
+        └── models
+            └── FooModel.conf
+```
 
-layout/content here...
+Now we mod the `fooValue` parameter, and we should also update the path to the copied `FooModel.conf`.
 
-- Now git add/commit.
+```
+# foo/2.0/FooSetup.conf
+fooValue = 4.13
+fooModels = "@resources:foo/2.0/models/FooModel.conf"
+```
 
-So we have the new DBT, *but what actually changed*? This is critical in
+As the content of `FooModel.conf` hasn't changed, the typical pattern was to _not_ copy this
+
+```
+resources/
+├── foo
+    ├── 1.0
+    |   ├── FooSetup.conf
+    |   └── models
+    |       └── FooModel.conf
+    └── 2.0
+        └── FooSetup.conf
+```
+
+and then point `FooSetup.conf` *back* to `1.0` model file
+
+```
+# foo/2.0/FooSetup.conf
+fooValue = 4.13
+fooModels = "@resources:foo/1.0/models/FooModel.conf"
+```
+
+After git add/commit we have the new DBT, *but what actually changed*? This is critical in
 keeping track of data provenance, i.e. what data processed with what parameters?
 
 If we use `git diff` we don't get a straightforward answer. We see that a new file
-has been created and see *all its contents*, so we can see the change to `fooParam`
-highlighted. Whilst we can see the reuse of the models file, to see exactly how
-the overall configuration was constructed, we have to trace it back through the
-filesystem. In this simple case it's not too bad, but as the number of files expands,
-one can end up in a maze of reuse.
+has been created with the *actual change being all its entire contents*. What is not obvious
+from that is the change to the value of `fooValue`. The creation of the new file hides,
+or at least requires further digging to check, this change. If we'd just editted the file,
+the diff would only show something like:
+
+```
+-fooValue = 3.14
++fooValue = 4.13
+```
+
+a clear and unamibiguous change. Furthemore, whilst we can see the reuse of the models
+file, to see exactly how the overall configuration was constructed, we have to trace it back
+through the filesystem. In this simple case it's not too bad, but as the number of files and DBTs
+expands, one can end up in a maze of reuse. This type of issue can be seen particularly in [this Pull Request](https://github.com/SuperNEMO-DBD/Falaise/pull/113/files)
 
 Now imagine we'd changed the models file as well. This would also have been copied
-and so we would never see what had changed, just the addition of the files.
+and so we would never see what had changed, just the addition of the files without a
+guide to how the content had changed, if at all.
 
 
 Why Are Directory-Based Tags Used?
 =====
 
-So far, no clear and succint explanation provided, but some suppositions can be made.
+So far, no clear and succint explanation has been provided, but some suppositions can be made.
 Through the lifetime of an experiment, certain configurations will change over time,
 for example a cabling map. Let's say the first quarter of the runs used configuration "A"
 and the remainder configuration "B". Processing/Analysis of the data could use runs
@@ -241,7 +293,7 @@ and repository structures. Instead, it's possible to reduce the problem to *just
 provided we can:
 
 1. Isolate the sets of resource files into separate git repositories, tagging those.
-2. Provide an API that can return at file at a given tag
+2. Provide an API that can return the content of a file at a given tag
 
 The first requirement is simple, just move the required resource directory into its
 own Git repository. The diectory tags can be removed, and replaced by git tags. Thus:
@@ -277,12 +329,15 @@ $ git show v2.0:resources/foo/FooSetup.conf
 # I'm version 2.0!
 ```
 
+or their diff:
+
+```
+git diff v1.0:resources/foo/FooSetup.conf v2.0:resources/foo/FooSetup.conf
+-# I'm version 1.0!
++# I'm version 2.0!
+
 Thus git provides a way to manage tags and retrieve file contents at that tag. To use in
 software, we need a C/C++ API instead of the Git command line, so the [libgit2](https://libgit2.org) and [GitCondDB](https://gitlab.cern.ch/lhcb/GitCondDB)
 projects can help.
 
-The `exercises/exercise-lg2.cc` program shows the low level use of libgit2 to demonstrate that the content
-of a repository at a given tag can be extracted to an array of bytes and subsequently to a `std::string`.
-
-The `resourceDB.cc` program shows the use of the LHCb GitCondDB library to perform a similar
-task but in a easier fashion.
+Examples of these are provided in the main repository.

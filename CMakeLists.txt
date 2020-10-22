@@ -17,7 +17,7 @@ target_link_libraries(exercise-lg2 PRIVATE PkgConfig::git2)
 find_package(GitCondDB QUIET)
 if(NOT GitCondDB_FOUND)
   FetchContent_Declare(GitCondDB
-    GIT_REPOSITORY https://gitlab.cern.ch/bmorgan/GitCondDB.git
+    GIT_REPOSITORY https://gitlab.cern.ch/LHCb/GitCondDB.git
     GIT_TAG        master)
   FetchContent_MakeAvailable(GitCondDB)
 endif()
@@ -28,14 +28,14 @@ foreach(_dbapp resourceDB condDB)
 endforeach()
 
 # Fetch example RDB
-FetchContent_Declare(resource-db
-  GIT_REPOSITORY https://github.com/drbenmorgan/Ex-SNemoResources.git
+FetchContent_Declare(snemoresourcedb
+  GIT_REPOSITORY https://github.com/SuperNEMO-DBD/SNemoResourceDB-proto.git
   GIT_TAG        main
-  SOURCE_DIR     resource-db.git)
-FetchContent_GetProperties(resource-db)
-if(NOT resource-db_POPULATED)
-  FetchContent_Populate(resource-db)
+  SOURCE_DIR     SNemoResourceDB.git)
+FetchContent_GetProperties(snemoresourcedb)
+if(NOT snemoresourcedb_POPULATED)
+  FetchContent_Populate(snemoresourcedb)
 endif()
 
 # - Run examples as tests to confirm expected behaviour
-add_test(NAME test_resourceDB COMMAND resourceDB "${resource-db_SOURCE_DIR}")
+add_test(NAME test_resourceDB COMMAND resourceDB "${snemoresourcedb_SOURCE_DIR}")
